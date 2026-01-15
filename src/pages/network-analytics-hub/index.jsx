@@ -4,6 +4,7 @@ import TrafficStats from './components/TrafficStats';
 import GeographicThreatDistribution from './components/GeographicThreatDistribution';
 import TopTalkersList from './components/TopTalkersList';
 import ConnectedDevices from './components/ConnectedDevices';
+import NetworkScanResults from './components/NetworkScanResults';
 
 const NetworkAnalyticsHub = () => {
     return (
@@ -25,6 +26,9 @@ const NetworkAnalyticsHub = () => {
 
             {/* Connected Devices Module */}
             <ConnectedDevices />
+
+            {/* Active Scan Results */}
+            <NetworkScanResults />
         </div>
     );
 };

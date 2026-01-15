@@ -28,10 +28,27 @@ def resolve_mac_vendor(mac_address):
     # In a real app, you'd lookup an OUI database here.
     return "Unknown"
 
+COMMON_PORTS = [21, 22, 23, 25, 53, 80, 110, 135, 139, 443, 445, 3306, 3389, 5432, 8000, 8080]
+
+def scan_ports(ip):
+    """Checks for open ports on the target IP (Quick Connect Scan)."""
+    open_ports = []
+    try:
+        for port in COMMON_PORTS:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(0.5) # Fast timeout
+            result = s.connect_ex((ip, port))
+            if result == 0:
+                open_ports.append(port)
+            s.close()
+    except Exception as e:
+        logger.error(f"Port scan failed for {ip}: {e}")
+    return open_ports
+
 def scan_network():
     """Performs ARP scan on local subnet."""
     local_ip, target_range = get_local_ip_and_range()
-    logger.info(f"Starting scan on {target_range} (Local IP: {local_ip})")
+    logger.info(f"Starting ARP scan on {target_range} (Local IP: {local_ip})")
     
     devices = []
     try:
@@ -57,12 +74,38 @@ def scan_network():
         # Ensure local host is included if scapy misses it (it often does)
         # Note: Scapy srp doesn't always capture own loopback/self in ARP scan
         
-        logger.info(f"Scan complete. Found {len(devices)} devices.")
+        logger.info(f"ARP Scan complete. Found {len(devices)} devices.")
         return devices
 
     except Exception as e:
-        logger.error(f"Scan failed: {e}")
+        logger.error(f"ARP Scan failed: {e}")
         return []
+
+def run_full_scan():
+    """Orchestrates a full network scan: ARP + Port Scan."""
+    logger.info("Starting FULL Active Network Scan...")
+    
+    # 1. Host Discovery
+    devices = scan_network()
+    
+    # 2. Port Scanning
+    results = []
+    for device in devices:
+        ip = device['ip']
+        logger.info(f"Scanning ports for {ip}...")
+        ports = scan_ports(ip)
+        
+        # Assess Risk
+        risk = "Low"
+        if 22 in ports or 3389 in ports: risk = "Medium" # SSH/RDP open
+        if 23 in ports: risk = "High" # Telnet is insecure
+        
+        device['open_ports'] = ports
+        device['risk_level'] = risk
+        results.append(device)
+        
+    logger.info(f"Full scan complete. Analyzed {len(results)} hosts.")
+    return results
 
 if __name__ == "__main__":
     # Test run

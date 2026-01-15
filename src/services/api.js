@@ -95,5 +95,27 @@ export const api = {
             console.error('Error fetching devices:', error)
             return []
         }
+    },
+
+    startScan: async () => {
+        try {
+            const response = await fetch(`${API_URL}/scan/start`, { method: 'POST' })
+            if (!response.ok) throw new Error('Failed to start scan')
+            return await response.json()
+        } catch (error) {
+            console.error('Error starting scan:', error)
+            return { error: error.message }
+        }
+    },
+
+    getScanResults: async () => {
+        try {
+            const response = await fetch(`${API_URL}/scan-results`)
+            if (!response.ok) throw new Error('Failed to fetch scan results')
+            return await response.json()
+        } catch (error) {
+            console.error('Error fetching scan results:', error)
+            return []
+        }
     }
 }

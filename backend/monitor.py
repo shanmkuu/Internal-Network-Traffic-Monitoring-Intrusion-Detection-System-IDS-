@@ -9,18 +9,24 @@ import threading
 import sys
 
 # Load environment variables
-load_dotenv()
+# Load environment variables
+env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env')
+load_dotenv(dotenv_path=env_path)
 
 # Setup Logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Supabase Setup
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+SUPABASE_URL = os.getenv("SUPABASE_URL") or os.getenv("VITE_SUPABASE_URL")
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("VITE_SUPABASE_ANON_KEY") or os.getenv("SUPABASE_KEY")
 
 if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
-    logging.error("Supabase credentials missing!")
+    logging.error("Supabase credentials missing! Checked for SUPABASE_URL, VITE_SUPABASE_URL, etc.")
+    logging.error(f"Current Env Keys: {list(os.environ.keys())}")
     exit(1)
+else:
+    logging.info(f"Supabase URL: {SUPABASE_URL[:10]}...")
+    logging.info(f"Supabase Key: {SUPABASE_SERVICE_ROLE_KEY[:5]}...*****...{SUPABASE_SERVICE_ROLE_KEY[-5:]}")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
@@ -187,13 +193,26 @@ def resolve_interface():
         if os.name == 'nt':
             from scapy.arch.windows import get_windows_if_list
             interfaces = get_windows_if_list()
+            
+            # 1. Prioritize real Wi-Fi adapters (exclude Virtual)
+            for iface in interfaces:
+                name = iface['name']
+                desc = iface['description']
+                if ("Wi-Fi" in name or "Wireless" in desc or "Wi-Fi" in desc) and "Virtual" not in desc:
+                    print(f"Automatically selected interface (Real): {name} ({desc})")
+                    return iface # Return full dict, sniffing usually takes name or dict
+                    
+            # 2. Fallback to any Wi-Fi match
             for iface in interfaces:
                 # Look for common Wi-Fi names
                 if 'Wi-Fi' in iface['name'] or 'Wireless' in iface['name'] or 'Wi-Fi' in iface['description']:
-                    print(f"Automatically selected interface: {iface['name']} ({iface['description']})")
-                    return iface['name'] # Scapy on Windows uses the name key
+                    print(f"Automatically selected interface (Fallback): {iface['name']} ({iface['description']})")
+                    return iface
+                    
     except Exception as e:
         print(f"Interface auto-discovery failed: {e}")
+    
+    return conf.iface
     
     return None # Fallback to default
 
@@ -202,15 +221,44 @@ def main():
     log_system_event("System Start", "IDS Monitor started")
     
     iface = resolve_interface()
+    print(f"Monitor utilizing interface: {iface}")
     
     # Update System Status
     try:
+        # Convert iface to string for DB
+        iface_str = iface['name'] if isinstance(iface, dict) else str(iface)
         supabase.table("system_status").insert({
             "status": "Running",
-            "monitored_interface": iface if iface else "Default/All"
+            "monitored_interface": iface_str
         }).execute()
     except Exception as e:
         print(f"Failed to update status: {e}")
+        # If 401, logic should probably continue sniffing but warn user
+        if "401" in str(e):
+             print("CRITICAL: Supabase rejected the connection (401 Unauthorized).")
+             print("   -> Your Anon/Service Key is invalid or expired.")
+             print("   -> Check your .env file in root.")
+
+    # Start Stats Reporter Thread
+    stats_thread = threading.Thread(target=report_stats)
+    stats_thread.daemon = True
+    stats_thread.start()
+
+    print("Stats reporting thread started.")
+
+    # Start Sniffing
+    try:
+        # Resolve just the name for Scapy if it's a dict
+        scapy_iface = iface['name'] if isinstance(iface, dict) and 'name' in iface else iface
+        
+        # Determine strictness of sniffing
+        # store=0 helps memory. prn=process_packet is the callback.
+        sniff(iface=scapy_iface, prn=process_packet, store=0)
+    except Exception as e:
+        print(f"Error sniffing: {e}")
+        print("Note: On Windows, make sure Npcap is installed. On Linux, run as root.")
+        if "name" in str(e):
+             print("debug: iface object was:", iface)
 
     # Start Stats Thread
     stats_thread = threading.Thread(target=report_stats, daemon=True)

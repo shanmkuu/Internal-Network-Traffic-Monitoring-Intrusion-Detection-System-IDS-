@@ -1,22 +1,37 @@
 import os
-from fastapi import FastAPI, HTTPException, Request
+import logging
+from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
+from dotenv import load_dotenv
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+
+# Load env variables from root
+env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env')
+load_dotenv(dotenv_path=env_path)
 from fastapi.middleware.cors import CORSMiddleware
 from supabase import create_client, Client
 from pydantic import BaseModel
-from dotenv import load_dotenv
 from typing import Optional
 
-# Load environment variables
-load_dotenv()
-
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+# Supabase Setup w/ Fallback
+SUPABASE_URL = os.getenv("SUPABASE_URL") or os.getenv("VITE_SUPABASE_URL")
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("VITE_SUPABASE_ANON_KEY") or os.getenv("SUPABASE_KEY")
 
 if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
-    print("Warning: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not found in environment variables.")
+    logging.error("Supabase credentials missing! Checked for SUPABASE_URL, VITE_SUPABASE_URL, etc.")
+    logging.error(f"Current Env Keys: {list(os.environ.keys())}")
+    # Don't exit, let it fail gracefully or just warn
+    # exit(1) is bad for API server
+else:
+    logging.info("Supabase credentials loaded.")
 
 # Initialize Supabase Client
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+try:
+    supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+except Exception as e:
+    logging.error(f"Failed to init Supabase: {e}")
+    supabase = None
 
 app = FastAPI(title="IDS Backend API")
 
@@ -147,7 +162,78 @@ def get_logs():
 
 import threading
 import time
-from backend.network_scanner import scan_network
+try:
+    from backend.network_scanner import scan_network, run_full_scan, get_local_ip_and_range
+    from backend.nmap_scanner import run_nmap_scan_flow
+except ImportError:
+    from network_scanner import scan_network, run_full_scan, get_local_ip_and_range
+    from nmap_scanner import run_nmap_scan_flow
+
+# ... (Existing code) ...
+
+# --- Scan Results Endpoints ---
+
+@app.post("/api/scan/start")
+async def start_active_scan(background_tasks: BackgroundTasks):
+    """Triggers a full active scan (Nmap Priority -> Native Fallback)."""
+    def perform_scan_and_save():
+        results = []
+        tool_used = "Native"
+        
+        try:
+            logging.info("Starting active scan task...")
+            
+            # 1. Determine Network Range
+            local_ip, cidr = get_local_ip_and_range()
+            
+            # 2. Try Nmap Scan
+            try:
+                logging.info(f"Attempting Nmap Scan on {cidr}...")
+                results = run_nmap_scan_flow(cidr)
+                tool_used = "Nmap"
+                logging.info("Nmap scan successful.")
+            except ImportError:
+                logging.warning("Nmap not available. Falling back to Native Scanner.")
+                results = run_full_scan()
+                tool_used = "Native"
+            except Exception as e:
+                logging.error(f"Nmap scan error: {e}. Falling back to Native.")
+                results = run_full_scan()
+                tool_used = "Native (Fallback)"
+
+            # 3. Save to Database
+            for device in results:
+                # Update connected_devices (optional, keeping it simple for now)
+                
+                # Insert into scan_results
+                scan_data = {
+                    "ip_address": device['ip'],
+                    "open_ports": ",".join(map(str, device.get('open_ports', []))),
+                    "risk_level": device.get('risk_level', 'Low'),
+                    "scan_type": "Full",
+                    "scan_tool": device.get('scan_tool', tool_used),
+                    "hostname": device.get('vendor', 'Unknown')
+                }
+                supabase.table("scan_results").insert(scan_data).execute()
+                
+            logging.info(f"Active scan task completed using {tool_used}.")
+        except Exception as e:
+            logging.error(f"Active scan task failed: {e}")
+
+    # Use FastAPI BackgroundTasks
+    background_tasks.add_task(perform_scan_and_save)
+    return {"status": "Scan started", "message": "The network scan is running in the background."}
+
+@app.get("/api/scan-results")
+async def get_scan_results():
+    """Retrieves historical scan results."""
+    try:
+        response = supabase.table("scan_results").select("*").order("created_at", desc=True).limit(50).execute()
+        return response.data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ... (Existing device_scanner_loop and other endpoints) ...
 
 # ... existing imports ...
 
