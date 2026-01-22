@@ -7,6 +7,10 @@ from dotenv import load_dotenv
 logging.basicConfig(level=logging.INFO)
 
 # Load env variables from root
+import sys
+# Add project root to sys.path so 'backend.modules' imports work from anywhere
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env')
 load_dotenv(dotenv_path=env_path)
 from fastapi.middleware.cors import CORSMiddleware
@@ -175,56 +179,30 @@ except ImportError:
 
 @app.post("/api/scan/start")
 async def start_active_scan(background_tasks: BackgroundTasks):
-    """Triggers a full active scan (Nmap Priority -> Native Fallback)."""
+    """Triggers a full active scan using the new Discovery Orchestrator."""
     def perform_scan_and_save():
-        results = []
-        tool_used = "Native"
-        
         try:
-            logging.info("Starting active scan task...")
+            logging.info("Starting orchestrated active scan...")
             
             # 1. Determine Network Range
             local_ip, cidr = get_local_ip_and_range()
             
-            # 2. Try Nmap Scan
-            try:
-                logging.info(f"Attempting Nmap Scan on {cidr}...")
-                results = run_nmap_scan_flow(cidr)
-                tool_used = "Nmap"
-                logging.info("Nmap scan successful.")
-            except ImportError:
-                logging.warning("Nmap not available. Falling back to Native Scanner.")
-                results = run_full_scan()
-                tool_used = "Native"
-            except Exception as e:
-                logging.error(f"Nmap scan error: {e}. Falling back to Native.")
-                results = run_full_scan()
-                tool_used = "Native (Fallback)"
+            # 2. Run Orchestrator
+            from backend.modules.discovery_orchestrator import DiscoveryOrchestrator
+            orchestrator = DiscoveryOrchestrator()
+            results = orchestrator.run_full_discovery(cidr)
 
-            # 3. Save to Database
-            for device in results:
-                # Update connected_devices (optional, keeping it simple for now)
-                
-                # Insert into scan_results
-                scan_data = {
-                    "ip_address": device['ip'],
-                    "open_ports": ",".join(map(str, device.get('open_ports', []))),
-                    "risk_level": device.get('risk_level', 'Low'),
-                    "scan_type": "Full",
-                    "scan_tool": device.get('scan_tool', tool_used),
-                    "hostname": device.get('vendor', 'Unknown'),
-                    "os_details": device.get('os_details', 'Unknown'),
-                    "vulnerabilities": device.get('vulnerabilities', [])
-                }
-                supabase.table("scan_results").insert(scan_data).execute()
-                
-            logging.info(f"Active scan task completed using {tool_used}.")
+            logging.info(f"Orchestrated scan completed. Processed {len(results)} devices.")
+            
+            # 3. (Optional) Run legacy logic for compatibility if needed, 
+            # but Orchestrator handles DB upsert now.
+            
         except Exception as e:
             logging.error(f"Active scan task failed: {e}")
 
     # Use FastAPI BackgroundTasks
     background_tasks.add_task(perform_scan_and_save)
-    return {"status": "Scan started", "message": "The network scan is running in the background."}
+    return {"status": "Scan started", "message": "The deep network discovery is running in the background."}
 
 @app.get("/api/scan-results")
 async def get_scan_results():
@@ -239,24 +217,36 @@ async def get_scan_results():
 
 # ... existing imports ...
 
-# Global In-Memory Device List
+# Global In-Memory Device List (Deprecated in favor of DB, but kept for fallback or cache)
 connected_devices = []
 
 def device_scanner_loop():
-    """Background thread to scan network periodically."""
+    """Background thread to scan network periodically (Orchestrated)."""
     global connected_devices
     logging.info("Device scanner thread started.")
+    
+    # Import Orchestrator here
+    try:
+        from backend.modules.discovery_orchestrator import DiscoveryOrchestrator
+        orchestrator = DiscoveryOrchestrator()
+    except Exception as e:
+        logging.error(f"Failed to load Orchestrator: {e}")
+        return
+
     while True:
         try:
-            logging.info("Running network scan...")
-            devices = scan_network()
-            if devices:
-                connected_devices = devices
-                logging.info(f"Updated connected devices list: {len(devices)} found.")
+            logging.info("Running scheduled network discovery...")
+            local_ip, cidr = get_local_ip_and_range()
+            results = orchestrator.run_full_discovery(cidr)
+            
+            if results:
+                connected_devices = results
+                logging.info(f"Scheduled discovery found {len(results)} devices.")
         except Exception as e:
             logging.error(f"Device scan failed: {e}")
         
-        time.sleep(30) # Scan every 30 seconds
+        # Scan every 5 minutes (300s)
+        time.sleep(300) 
 
 @app.on_event("startup")
 def startup_event():
@@ -266,8 +256,14 @@ def startup_event():
 
 @app.get("/api/devices")
 def get_devices():
-    """Returns the current list of connected devices."""
-    return connected_devices
+    """Returns the current list of devices (Synced from DB for rich data)."""
+    try:
+        # Prefer DB source for rich data
+        response = supabase.table("devices").select("*").order("last_seen", desc=True).execute()
+        return response.data
+    except Exception as e:
+        logging.error(f"Failed to fetch from DB, returning cached: {e}")
+        return connected_devices
 
 if __name__ == "__main__":
     import uvicorn
