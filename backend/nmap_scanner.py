@@ -55,7 +55,7 @@ class NmapScanner:
 
     def scan_specific_targets(self, devices):
         """
-        Performs port scan on specific IPs.
+        Performs port scan on specific IPs with Version Detection, OS Detection, and Vuln Scripts.
         devices: list of dicts from scan_network_segment or native scanner.
         """
         if not self.available:
@@ -66,37 +66,77 @@ class NmapScanner:
 
         # Extract IPs
         target_ips = " ".join([d['ip'] for d in devices])
-        logger.info(f"Starting Nmap Port Scan on {len(devices)} targets...")
+        logger.info(f"Starting Nmap Port & Vuln Scan on {len(devices)} targets...")
         
         try:
-            # -sT: Connect Scan (unprivileged)
-            # --top-ports 100: Fast scan of common ports
-            self.nm.scan(hosts=target_ips, arguments='-sT --top-ports 100')
+            # -A: Aggressive scan (OS detection, version detection, script scanning, traceroute)
+            # --script vuln: Run vulnerability detection scripts
+            # (Removed --top-ports 100 to scan default top 1000 ports for better coverage)
+            nm_args = '-A --script vuln' 
+            logger.info(f"Running Aggressive Nmap Scan with arguments: {nm_args}")
+            self.nm.scan(hosts=target_ips, arguments=nm_args)
             
             enrichment_results = []
             for device in devices:
                 ip = device['ip']
+                # Default values
+                open_ports_list = []
+                os_match = "Unknown"
+                vulns_found = []
+                risk = "Low"
+                tool_status = "Nmap"
+
                 if ip in self.nm.all_hosts():
-                    # Get open ports
-                    open_ports = []
-                    if 'tcp' in self.nm[ip]:
-                        for port, info in self.nm[ip]['tcp'].items():
+                    host_data = self.nm[ip]
+                    
+                    # 1. Open Ports & Services
+                    if 'tcp' in host_data:
+                        for port, info in host_data['tcp'].items():
                             if info['state'] == 'open':
-                                open_ports.append(port)
+                                service_info = f"{info.get('name', 'tcp')} {info.get('product', '')} {info.get('version', '')}".strip()
+                                open_ports_list.append(f"{port}:{service_info}")
+                                
+                                # Extract script output (vulnerabilities) for this port
+                                if 'script' in info:
+                                    for script_name, script_output in info['script'].items():
+                                        vulns_found.append({
+                                            "type": "port_script",
+                                            "port": port,
+                                            "script": script_name,
+                                            "output": script_output
+                                        })
+
+                    # 2. OS Detection
+                    if 'osmatch' in host_data and host_data['osmatch']:
+                        # Take the best match
+                        best = host_data['osmatch'][0]
+                        os_match = f"{best['name']} ({best['accuracy']}%)"
+
+                    # 3. Host Script info (e.g. smb-vuln-*)
+                    if 'hostscript' in host_data:
+                        for script in host_data['hostscript']:
+                             vulns_found.append({
+                                 "type": "host_script",
+                                 "port": None,
+                                 "script": script['id'],
+                                 "output": script['output']
+                             })
+
+                    # 4. Risk Assessment
+                    if vulns_found:
+                        risk = "High"
+                    elif any("22:" in p or "3389:" in p or "23:" in p for p in open_ports_list):
+                        risk = "Medium"
                     
-                    # Risk Assessment
-                    risk = "Low"
-                    if 22 in open_ports or 3389 in open_ports: risk = "Medium"
-                    if 23 in open_ports: risk = "High"
-                    
-                    device['open_ports'] = open_ports
-                    device['risk_level'] = risk
-                    device['scan_tool'] = "Nmap"
                 else:
-                    # Nmap might have missed it or it went offline
-                    device['open_ports'] = []
-                    device['risk_level'] = "Low"
-                    device['scan_tool'] = "Nmap (Failed)"
+                    tool_status = "Nmap (Failed/Offline)"
+                
+                # Update device dict
+                device['open_ports'] = open_ports_list
+                device['os_details'] = os_match
+                device['vulnerabilities'] = vulns_found
+                device['risk_level'] = risk
+                device['scan_tool'] = tool_status
                     
                 enrichment_results.append(device)
                 
@@ -104,7 +144,8 @@ class NmapScanner:
 
         except Exception as e:
             logger.error(f"Nmap Port Scan failed: {e}")
-            return devices # Return original without ports
+            logger.exception("Traceback:")
+            return devices # Return original without enrichment on error
 
 # Global Instance
 nmap_scanner_instance = NmapScanner()

@@ -212,7 +212,9 @@ async def start_active_scan(background_tasks: BackgroundTasks):
                     "risk_level": device.get('risk_level', 'Low'),
                     "scan_type": "Full",
                     "scan_tool": device.get('scan_tool', tool_used),
-                    "hostname": device.get('vendor', 'Unknown')
+                    "hostname": device.get('vendor', 'Unknown'),
+                    "os_details": device.get('os_details', 'Unknown'),
+                    "vulnerabilities": device.get('vulnerabilities', [])
                 }
                 supabase.table("scan_results").insert(scan_data).execute()
                 

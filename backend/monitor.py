@@ -1,5 +1,5 @@
 import logging
-from scapy.all import sniff, IP, TCP, UDP, ICMP, Conf
+from scapy.all import sniff, IP, TCP, UDP, ICMP, Conf, conf
 from supabase import create_client, Client
 from dotenv import load_dotenv
 import os
@@ -57,11 +57,15 @@ class TrafficStats:
         self.http_packets = 0
         self.https_packets = 0
         self.dns_packets = 0
+        self.dhcp_packets = 0
         self.lock = threading.Lock()
 
     def update(self, packet):
         with self.lock:
             self.total_packets += 1
+            if self.total_packets % 50 == 0:
+                logging.info(f"Packet Debug: {packet.summary()} | Layers: {[x.name for x in packet.layers()]}")
+
             if TCP in packet:
                 self.tcp_packets += 1
                 if packet[TCP].dport == 80 or packet[TCP].sport == 80:
@@ -72,6 +76,8 @@ class TrafficStats:
                 self.udp_packets += 1
                 if packet[UDP].dport == 53 or packet[UDP].sport == 53:
                     self.dns_packets += 1
+                elif packet[UDP].dport in [67, 68] or packet[UDP].sport in [67, 68]:
+                    self.dhcp_packets += 1
             elif ICMP in packet:
                 self.icmp_packets += 1
 
@@ -84,6 +90,7 @@ class TrafficStats:
             self.http_packets = 0
             self.https_packets = 0
             self.dns_packets = 0
+            self.dhcp_packets = 0
 
 stats = TrafficStats()
 
@@ -148,7 +155,8 @@ def report_stats():
                     "icmp_packets": stats.icmp_packets,
                     "http_packets": stats.http_packets,
                     "https_packets": stats.https_packets,
-                    "dns_packets": stats.dns_packets
+                    "dns_packets": stats.dns_packets,
+                    "dhcp_packets": stats.dhcp_packets
                 }
                 stats.reset() 
 
@@ -164,6 +172,8 @@ def report_stats():
                     logging.info(f"Stats reported: {data}")
                 except Exception as e:
                     print(f"Extended stats insert failed: {e}")
+                    with open("monitor_error.log", "a") as f:
+                        f.write(f"Extended stats error: {e}\n")
                     sys.stdout.flush()
                     # Fallback to basic stats if columns missing
                     logging.warning(f"Failed to report extended stats (likely missing columns), retrying with basic stats: {e}")
@@ -266,13 +276,9 @@ def main():
 
     # Start Sniffer
     try:
-        # calling sniff with count=0 runs indefinitely
-        # On Windows, defining iface often fixes "no packets captured" issues if default is Loopback
-        if iface:
-            sniff(iface=iface, prn=process_packet, store=0)
-        else:
-            print("Using default interface...")
-            sniff(prn=process_packet, store=0)
+        print("Starting Scapy Sniffer (Default Interface)...")
+        # storing=0 is essential for long-running sniff
+        sniff(prn=process_packet, store=0)
     except KeyboardInterrupt:
         print("Stopping IDS Monitor...")
         log_system_event("System Stop", "IDS Monitor stopped manually")
@@ -280,6 +286,7 @@ def main():
         log_system_event("System Error", f"IDS Monitor crashed: {e}")
         print(f"Error: {e}")
         print("Note: On Windows, make sure Npcap is installed. On Linux, run as root.")
+
 
 if __name__ == "__main__":
     main()

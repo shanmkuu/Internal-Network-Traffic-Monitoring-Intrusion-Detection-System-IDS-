@@ -29,27 +29,28 @@ const Sidebar = () => {
             <nav className="flex-1 px-3 py-6 space-y-1">
                 <p className="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Main Menu</p>
 
-                {navItems.map((item) => {
-                    const isActive = location.pathname === item.path;
-                    return (
-                        <NavLink
-                            key={item.path}
-                            to={item.path}
-                            className={({ isActive }) => `group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 ${isActive
-                                ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20 shadow-[0_0_20px_rgba(59,130,246,0.15)]'
-                                : 'text-gray-400 hover:text-white hover:bg-white/5'
-                                }`}
-                        >
-                            <div className={({ isActive }) => `p-2 rounded-lg backdrop-blur-md border transition-all duration-300 ${isActive
-                                ? 'bg-blue-500/20 border-blue-400/30 shadow-inner shadow-blue-500/20'
-                                : 'bg-white/5 border-white/10 group-hover:bg-white/10 group-hover:border-white/20'
-                                }`}>
-                                <item.icon className="w-4 h-4" />
-                            </div>
-                            <span className="tracking-wide">{item.label}</span>
-                        </NavLink>
-                    );
-                })}
+                {navItems.map((item) => (
+                    <NavLink
+                        key={item.path}
+                        to={item.path}
+                        className={({ isActive }) => `group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 ${isActive
+                            ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20 shadow-[0_0_20px_rgba(59,130,246,0.15)]'
+                            : 'text-gray-400 hover:text-white hover:bg-white/5'
+                            }`}
+                    >
+                        {({ isActive }) => (
+                            <>
+                                <div className={`p-2 rounded-lg backdrop-blur-md border transition-all duration-300 ${isActive
+                                    ? 'bg-blue-500/20 border-blue-400/30 shadow-inner shadow-blue-500/20'
+                                    : 'bg-white/5 border-white/10 group-hover:bg-white/10 group-hover:border-white/20'
+                                    }`}>
+                                    <item.icon className="w-4 h-4" />
+                                </div>
+                                <span className="tracking-wide">{item.label}</span>
+                            </>
+                        )}
+                    </NavLink>
+                ))}
             </nav>
 
             {/* Footer Info */}
@@ -59,7 +60,7 @@ const Sidebar = () => {
                     <p className="text-[10px] text-gray-600 mt-1">Last update: Today</p>
                 </div>
             </div>
-        </aside>
+        </aside >
     );
 };
 

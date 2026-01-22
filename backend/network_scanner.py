@@ -30,6 +30,23 @@ def resolve_mac_vendor(mac_address):
 
 COMMON_PORTS = [21, 22, 23, 25, 53, 80, 110, 135, 139, 443, 445, 3306, 3389, 5432, 8000, 8080]
 
+def get_banner(ip, port):
+    """Attempts to grab a service banner from the port."""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(1.0)
+        s.connect((ip, port))
+        
+        # Send a generic trigger for some protocols
+        if port in [80, 8080]:
+            s.send(b'HEAD / HTTP/1.0\r\n\r\n')
+        
+        banner = s.recv(1024).decode('utf-8', errors='ignore').strip()
+        s.close()
+        return banner
+    except:
+        return ""
+
 def scan_ports(ip):
     """Checks for open ports on the target IP (Quick Connect Scan)."""
     open_ports = []
@@ -38,9 +55,26 @@ def scan_ports(ip):
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.settimeout(0.5) # Fast timeout
             result = s.connect_ex((ip, port))
-            if result == 0:
-                open_ports.append(port)
             s.close()
+            
+            if result == 0:
+                # Port is open, try to identify service
+                try:
+                    service_name = socket.getservbyport(port)
+                except:
+                    service_name = "unknown"
+                
+                # Grab banner
+                banner = get_banner(ip, port)
+                if banner:
+                    # Truncate clean banner
+                    clean_banner = banner.split('\n')[0][:50]
+                    service_info = f"{service_name} ({clean_banner})"
+                else:
+                    service_info = service_name
+                
+                open_ports.append(f"{port}:{service_info}")
+                
     except Exception as e:
         logger.error(f"Port scan failed for {ip}: {e}")
     return open_ports

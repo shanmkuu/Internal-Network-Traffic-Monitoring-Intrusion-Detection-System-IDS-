@@ -21,7 +21,11 @@ create table if not exists traffic_stats (
   total_packets integer,
   tcp_packets integer,
   udp_packets integer,
-  icmp_packets integer
+  icmp_packets integer,
+  http_packets integer default 0,
+  https_packets integer default 0,
+  dns_packets integer default 0,
+  dhcp_packets integer default 0
 );
 
 create table if not exists system_status (

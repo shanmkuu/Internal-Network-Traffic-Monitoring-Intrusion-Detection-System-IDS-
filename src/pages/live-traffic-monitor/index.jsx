@@ -98,7 +98,7 @@ const LiveTrafficMonitor = () => {
                 <div className="col-span-12 lg:col-span-5">
                     <div className="bg-[#1A2332] rounded-2xl p-6 border border-white/5">
                         <div className="grid grid-cols-3 gap-3">
-                            {['TCP', 'UDP', 'ICMP', 'HTTPS', 'DNS', 'HTTP'].map(proto => (
+                            {['TCP', 'UDP', 'ICMP', 'HTTPS', 'DNS', 'HTTP', 'DHCP'].map(proto => (
                                 <button
                                     key={proto}
                                     onClick={() => setSelectedProtocol(proto === selectedProtocol ? 'ALL' : proto)}
@@ -121,6 +121,7 @@ const LiveTrafficMonitor = () => {
                                     {proto === 'HTTPS' && <Activity className="w-5 h-5" />}
                                     {proto === 'HTTP' && <Box className="w-5 h-5" />}
                                     {proto === 'DNS' && <Server className="w-5 h-5" />}
+                                    {proto === 'DHCP' && <Share2 className="w-5 h-5" />}
                                     {proto}
                                 </button>
                             ))}
@@ -221,6 +222,9 @@ const LiveTrafficMonitor = () => {
                                 )}
                                 {(selectedProtocol === 'ALL' || selectedProtocol === 'DNS') && (
                                     <Line type="monotone" dataKey="dns_packets" stroke="#6366F1" strokeWidth={3} dot={false} activeDot={{ r: 6 }} />
+                                )}
+                                {(selectedProtocol === 'ALL' || selectedProtocol === 'DHCP') && (
+                                    <Line type="monotone" dataKey="dhcp_packets" stroke="#F97316" strokeWidth={3} dot={false} activeDot={{ r: 6 }} />
                                 )}
                             </LineChart>
                         </ResponsiveContainer>

@@ -35,7 +35,12 @@ const ConnectedDevices = () => {
                     <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 backdrop-blur-sm shadow-inner shadow-emerald-500/10">
                         <Wifi className="w-5 h-5 text-emerald-500" />
                     </div>
-                    Connected Devices
+                    <div>
+                        Connected Devices
+                        <span className="ml-3 text-sm font-normal text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                            Total: {devices.length} devices
+                        </span>
+                    </div>
                 </h3>
                 <div className="flex items-center gap-2">
                     <span className="text-xs text-gray-500 bg-[#0F172A] px-2 py-1 rounded">
