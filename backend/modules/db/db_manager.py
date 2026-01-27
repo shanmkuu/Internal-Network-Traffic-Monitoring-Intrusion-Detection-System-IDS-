@@ -24,6 +24,20 @@ class DBManager:
                 logger.error(f"Failed to init Supabase client: {e}")
                 self.supabase = None
 
+    def get_device_by_mac(self, mac_address):
+        """
+        Retrieves a device from the 'devices' table by MAC address.
+        """
+        if not self.supabase: return None
+        try:
+            response = self.supabase.table("devices").select("*").eq("mac_address", mac_address).execute()
+            if response.data:
+                return response.data[0]
+            return None
+        except Exception as e:
+            logger.error(f"Failed to get device by mac {mac_address}: {e}")
+            return None
+
     def upsert_device(self, device_data):
         """
         Inserts or updates a device in the 'devices' table.
@@ -71,3 +85,38 @@ class DBManager:
             self.supabase.table("discovery_logs").insert(payload).execute()
         except Exception as e:
             logger.error(f"Failed to log discovery: {e}")
+
+    def save_scan_result(self, scan_data):
+        """
+        Inserts a record into the 'scan_results' table.
+        Used for the frontend's historical scan reports.
+        """
+        if not self.supabase: return None
+        
+        try:
+            # Clean up open_ports to be a string if it's a list
+            open_ports_str = scan_data.get('open_ports')
+            if isinstance(open_ports_str, list):
+                # Join with comma
+                # items in list are like "80:http", which is what we want
+                open_ports_str = ",".join([str(p) for p in open_ports_str])
+            elif not isinstance(open_ports_str, str):
+                open_ports_str = ""
+
+            payload = {
+                "ip_address": scan_data.get('ip'),
+                "hostname": scan_data.get('hostname'),
+                "mac_address": scan_data.get('mac'),
+                "status": "Online", # Active scan only finds online hosts
+                "open_ports": open_ports_str,
+                "os_details": scan_data.get('os_family') or scan_data.get('os_details'),
+                "risk_level": scan_data.get('risk_level', 'Low'),
+                "vulnerabilities": scan_data.get('vulnerabilities', []),
+                "scan_duration": scan_data.get('scan_duration', 0)
+            }
+            
+            response = self.supabase.table("scan_results").insert(payload).execute()
+            return response.data
+        except Exception as e:
+            logger.error(f"Failed to save scan result for {scan_data.get('ip')}: {e}")
+            return None

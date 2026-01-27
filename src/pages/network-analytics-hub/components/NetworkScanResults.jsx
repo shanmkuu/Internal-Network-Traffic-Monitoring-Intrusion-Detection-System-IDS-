@@ -5,19 +5,55 @@ import { format } from 'date-fns';
 
 const NetworkScanResults = () => {
     const [results, setResults] = useState([]);
+    const [knownDevices, setKnownDevices] = useState({}); // Map for fast lookup
     const [scanning, setScanning] = useState(false);
     const [loading, setLoading] = useState(true);
     const [expandedRows, setExpandedRows] = useState(new Set());
 
     const fetchResults = async () => {
         try {
-            const data = await api.getScanResults();
-            setResults(data || []);
+            const [scanData, devicesData] = await Promise.all([
+                api.getScanResults(),
+                api.getDevices() // Fetch known devices to backfill names
+            ]);
+
+            setResults(scanData || []);
+
+            // Create a lookup map by IP and MAC
+            const lookup = {};
+            if (devicesData) {
+                devicesData.forEach(d => {
+                    if (d.ip_address) lookup[d.ip_address] = d;
+                    if (d.mac_address) lookup[d.mac_address] = d;
+                });
+            }
+            setKnownDevices(lookup);
+
         } catch (error) {
             console.error("Failed to load scan results", error);
         } finally {
             setLoading(false);
         }
+    };
+
+    const getDeviceName = (scan) => {
+        // 1. Try scan result itself
+        if (scan.hostname && scan.hostname !== 'Unknown') return scan.hostname;
+        if (scan.custom_name) return scan.custom_name;
+
+        // 2. Try lookup by MAC
+        if (scan.mac_address && knownDevices[scan.mac_address]) {
+            const d = knownDevices[scan.mac_address];
+            return d.hostname || d.custom_name || "Unknown";
+        }
+
+        // 3. Try lookup by IP
+        if (scan.ip_address && knownDevices[scan.ip_address]) {
+            const d = knownDevices[scan.ip_address];
+            return d.hostname || d.custom_name || "Unknown";
+        }
+
+        return "Unknown";
     };
 
     const handleStartScan = async () => {
@@ -81,7 +117,9 @@ const NetworkScanResults = () => {
                     <thead className="text-xs uppercase bg-[#0F172A] text-gray-500">
                         <tr>
                             <th className="px-4 py-3 rounded-l-lg">Time</th>
-                            <th className="px-4 py-3">Host / OS</th>
+                            <th className="px-4 py-3">IP Address</th>
+                            <th className="px-4 py-3">Device Name</th>
+                            <th className="px-4 py-3">OS Details</th>
                             <th className="px-4 py-3">Open Ports</th>
                             <th className="px-4 py-3">Risk Level</th>
                             <th className="px-4 py-3 rounded-r-lg">Actions</th>
@@ -89,9 +127,9 @@ const NetworkScanResults = () => {
                     </thead>
                     <tbody className="divide-y divide-gray-700">
                         {loading && results.length === 0 ? (
-                            <tr><td colSpan="5" className="text-center py-8">Loading history...</td></tr>
+                            <tr><td colSpan="7" className="text-center py-8">Loading history...</td></tr>
                         ) : results.length === 0 ? (
-                            <tr><td colSpan="5" className="text-center py-8 text-gray-500">No scan reports found. Start a scan to inspect the network.</td></tr>
+                            <tr><td colSpan="7" className="text-center py-8 text-gray-500">No scan reports found. Start a scan to inspect the network.</td></tr>
                         ) : (
                             results.map((scan) => (
                                 <React.Fragment key={scan.id}>
@@ -103,10 +141,18 @@ const NetworkScanResults = () => {
                                             </div>
                                         </td>
                                         <td className="px-4 py-3">
-                                            <div className="text-white font-medium">{scan.ip_address}</div>
-                                            <div className="text-xs text-gray-500 leading-none mt-1">{scan.hostname}</div>
-                                            {scan.os_details && scan.os_details !== 'Unknown' && (
-                                                <div className="text-[10px] text-blue-400 mt-1 font-mono">{scan.os_details}</div>
+                                            <div className="text-white font-medium font-mono">{scan.ip_address}</div>
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <div className="text-xs text-indigo-300 font-medium">
+                                                {getDeviceName(scan)}
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            {scan.os_details && scan.os_details !== 'Unknown' ? (
+                                                <div className="text-[10px] text-blue-400 font-mono">{scan.os_details}</div>
+                                            ) : (
+                                                <span className="text-gray-600 text-[10px]">-</span>
                                             )}
                                         </td>
                                         <td className="px-4 py-3 font-mono text-xs text-indigo-300">
@@ -132,7 +178,7 @@ const NetworkScanResults = () => {
                                     </tr>
                                     {expandedRows.has(scan.id) && (
                                         <tr>
-                                            <td colSpan="5" className="px-4 py-4 bg-[#0F172A]/30 border-t border-gray-700/50">
+                                            <td colSpan="7" className="px-4 py-4 bg-[#0F172A]/30 border-t border-gray-700/50">
                                                 <div className="space-y-4">
                                                     {/* Full Port Details */}
                                                     <div>

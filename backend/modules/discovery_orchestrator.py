@@ -102,6 +102,25 @@ class DiscoveryOrchestrator:
             # DB Schema uses text Level
             host_data['risk_level'] = risk_assessment['level']
             
+            # 4b. Backfill Hostname from History (Preserve existing names)
+            if host_data.get('mac'):
+                 logger.info(f"Checking DB for MAC: {host_data['mac']}")
+                 existing_dev = self.db_manager.get_device_by_mac(host_data['mac'])
+                 if existing_dev:
+                     logger.info(f"DB Hit for {host_data['mac']}: {existing_dev.get('hostname')} / {existing_dev.get('custom_name')}")
+                     # If we didn't resolve a hostname this time, but we knew one before, keep it.
+                     if not host_data.get('hostname'):
+                         known_name = existing_dev.get('hostname') or existing_dev.get('custom_name')
+                         if known_name:
+                             host_data['hostname'] = known_name
+                             logger.info(f"Backfilled hostname for {host_data['ip']} from DB: {known_name}")
+                     
+                     # Also preserve custom_name if we have it in memory for the scan report
+                     if existing_dev.get('custom_name'):
+                         host_data['custom_name'] = existing_dev.get('custom_name')
+            else:
+                 logger.warning(f"No MAC for IP {host_data['ip']} - cannot backfill hostname.")
+
             # 5. Persist to DB
             if host_data['mac']: # Only persist if we have a MAC (Key)
                 db_device = self.db_manager.upsert_device(host_data)
@@ -113,6 +132,11 @@ class DiscoveryOrchestrator:
                          self.db_manager.log_discovery(dev_id, host_data['method'])
                     except:
                         pass
+            
+            # 6. Save to Scan History (For Reports UI)
+            # This allows the "Active Scan Reports" table to show this scan immediately.
+            # We explicitly include hostname here.
+            self.db_manager.save_scan_result(host_data)
             
             results.append(host_data)
             
