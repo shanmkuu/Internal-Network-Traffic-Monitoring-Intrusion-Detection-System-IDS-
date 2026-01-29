@@ -55,7 +55,8 @@ const SecurityCommandCenter = () => {
     }, []);
 
     // Derived Metrics
-    const highSeverityCount = alerts.filter(a => a.severity === 'High').length;
+    // EVE: 1=High, 2=Medium, 3=Low
+    const highSeverityCount = alerts.filter(a => a.alert?.severity === 1).length;
     const totalPackets = stats?.total_packets || 0;
 
     // Protocol Distribution Data for Pie Chart
@@ -214,23 +215,31 @@ const SecurityCommandCenter = () => {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-700">
-                            {alerts.slice(0, 5).map((alert) => (
-                                <tr key={alert.id} className="hover:bg-[#0F172A]/50 transition-colors">
-                                    <td className="px-4 py-3 font-mono">
-                                        {format(new Date(alert.created_at), 'HH:mm:ss')}
-                                    </td>
-                                    <td className="px-4 py-3">
-                                        <span className={`px-2 py-0.5 rounded text-xs font-bold ${alert.severity === 'High' ? 'bg-red-500/10 text-red-500' :
-                                            alert.severity === 'Medium' ? 'bg-amber-500/10 text-amber-500' :
-                                                'bg-emerald-500/10 text-emerald-500'
-                                            }`}>
-                                            {alert.severity}
-                                        </span>
-                                    </td>
-                                    <td className="px-4 py-3 text-white">{alert.alert_type}</td>
-                                    <td className="px-4 py-3 font-mono">{alert.source_ip}</td>
-                                </tr>
-                            ))}
+                            {alerts.slice(0, 5).map((alert, index) => {
+                                const sevMap = { 1: 'High', 2: 'Medium', 3: 'Low' };
+                                const severity = sevMap[alert.alert?.severity] || 'Low';
+                                const time = alert.timestamp;
+                                const type = alert.alert?.category || 'Unknown';
+                                const src = alert.src_ip;
+
+                                return (
+                                    <tr key={alert._original_id || index} className="hover:bg-[#0F172A]/50 transition-colors">
+                                        <td className="px-4 py-3 font-mono">
+                                            {time ? format(new Date(time), 'HH:mm:ss') : '-'}
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <span className={`px-2 py-0.5 rounded text-xs font-bold ${severity === 'High' ? 'bg-red-500/10 text-red-500' :
+                                                severity === 'Medium' ? 'bg-amber-500/10 text-amber-500' :
+                                                    'bg-emerald-500/10 text-emerald-500'
+                                                }`}>
+                                                {severity}
+                                            </span>
+                                        </td>
+                                        <td className="px-4 py-3 text-white">{type}</td>
+                                        <td className="px-4 py-3 font-mono">{src}</td>
+                                    </tr>
+                                )
+                            })}
                             {alerts.length === 0 && (
                                 <tr>
                                     <td colSpan="4" className="text-center py-4 text-gray-500">No alerts detected</td>

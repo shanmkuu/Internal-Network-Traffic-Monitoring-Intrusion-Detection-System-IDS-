@@ -1,0 +1,23 @@
+# Sample Suricata Rules for IDS Testing
+
+# ICMP Alert (Ping)
+alert icmp any any -> any any (msg:"ICMP Ping Detected"; sid:1000001; rev:1; classtype:icmp-event;)
+
+# HTTP Detect (Basic)
+alert tcp any any -> any 80 (msg:"HTTP Traffic Detected"; flow:established,to_server; sid:1000002; rev:1; classtype:web-application-activity;)
+
+# Potential SQL Injection (Simple signature)
+alert tcp any any -> any any (msg:"Possible SQL Injection Detected"; content:"UNION SELECT"; nocase; sid:1000003; rev:1; classtype:web-application-attack;)
+
+# High Port Scan (Mock signature)
+alert tcp any any -> any 22 (msg:"SSH Connection Attempt"; sid:1000004; rev:1; classtype:attempted-recon;)
+
+# Advanced: HTTP Method Check
+alert tcp any any -> any any (msg:"HTTP POST Request"; flow:established,to_server; http.method:POST; sid:1000005; rev:1; classtype:web-application-activity;)
+
+# Advanced: Sensitive Path
+alert tcp any any -> any any (msg:"Access to Shadow File"; http.uri:/etc/shadow; sid:1000006; rev:1; classtype:attempted-admin;)
+
+# Advanced: DNS Query for malicous domain
+# (Note: DNSParser integration logs query type/name. Rule engine maps http fields currently, need to map DNS fields if we want to rule on them. 
+# For now, just logging DNS activity is the "feature". Logic in monitor.py only maps http.* options.)

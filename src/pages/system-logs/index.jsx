@@ -20,11 +20,14 @@ const Logs = () => {
         return () => clearInterval(interval);
     }, []);
 
-    const filteredLogs = logs.filter(log =>
-        log.source_ip.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        log.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        log.alert_type.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const filteredLogs = logs.filter(log => {
+        const src = log.src_ip || '';
+        const desc = log.alert?.signature || '';
+        const type = log.alert?.category || '';
+        return src.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            desc.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            type.toLowerCase().includes(searchTerm.toLowerCase());
+    });
 
     const exportLogs = () => {
         const dataStr = JSON.stringify(logs, null, 2);
@@ -92,23 +95,31 @@ const Logs = () => {
                                     <td colSpan="5" className="text-center py-4">No logs found</td>
                                 </tr>
                             ) : (
-                                filteredLogs.map((log) => (
-                                    <tr key={log.id} className="hover:bg-[#334155]/50">
-                                        <td className="px-4 py-3 font-mono text-gray-500">
-                                            {format(new Date(log.created_at), 'yyyy-MM-dd HH:mm:ss')}
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <span className="text-blue-400 font-medium flex items-center gap-1">
-                                                <Info className="w-3 h-3" /> INFO
-                                            </span>
-                                        </td>
-                                        <td className="px-4 py-3 font-mono">{log.source_ip === 'localhost' ? 'System' : log.source_ip}</td>
-                                        <td className="px-4 py-3 text-white">{log.alert_type}</td>
-                                        <td className="px-4 py-3">{log.description}</td>
-                                    </tr>
-                                ))
+                                filteredLogs.map((log, index) => {
+                                    const time = log.timestamp;
+                                    const src = log.src_ip === 'localhost' ? 'System' : log.src_ip;
+                                    const type = log.alert?.category;
+                                    const desc = log.alert?.signature;
+
+                                    return (
+                                        <tr key={log._original_id || index} className="hover:bg-[#334155]/50">
+                                            <td className="px-4 py-3 font-mono text-gray-500">
+                                                {time ? format(new Date(time), 'yyyy-MM-dd HH:mm:ss') : '-'}
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <span className="text-blue-400 font-medium flex items-center gap-1">
+                                                    <Info className="w-3 h-3" /> INFO
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-3 font-mono">{src}</td>
+                                            <td className="px-4 py-3 text-white">{type}</td>
+                                            <td className="px-4 py-3">{desc}</td>
+                                        </tr>
+                                    );
+                                })
                             )}
                         </tbody>
+
                     </table>
                 </div>
             </div>

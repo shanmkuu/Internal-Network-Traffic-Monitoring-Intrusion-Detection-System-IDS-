@@ -18,6 +18,11 @@ from supabase import create_client, Client
 from pydantic import BaseModel
 from typing import Optional
 
+try:
+    from backend.utils.eve_builder import build_eve_alert
+except ImportError:
+    from utils.eve_builder import build_eve_alert
+
 # Supabase Setup w/ Fallback
 SUPABASE_URL = os.getenv("SUPABASE_URL") or os.getenv("VITE_SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("VITE_SUPABASE_ANON_KEY") or os.getenv("SUPABASE_KEY")
@@ -84,7 +89,7 @@ def get_alerts():
     # Fetch only security alerts (Medium/High) or exclude 'Low' if used for info
     # Or specifically exclude "System *" alert types
     response = supabase.table("alerts").select("*").neq("severity", "Low").order("created_at", desc=True).limit(50).execute()
-    return response.data
+    return [build_eve_alert(alert) for alert in response.data]
 
 @app.post("/api/alerts")
 def create_alert(alert: AlertCreate):
@@ -162,7 +167,7 @@ def get_geo_distribution():
 def get_logs():
     # Fetch system logs (Severity 'Low' or specific types)
     response = supabase.table("alerts").select("*").eq("severity", "Low").order("created_at", desc=True).limit(100).execute()
-    return response.data
+    return [build_eve_alert(alert) for alert in response.data]
 
 import threading
 import time

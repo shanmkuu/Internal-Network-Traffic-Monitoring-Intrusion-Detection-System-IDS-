@@ -43,30 +43,43 @@ const AlertTable = () => {
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
-                    {alerts.map((alert) => (
-                        <tr key={alert.id} className="hover:bg-white/5 transition-colors">
-                            <td className="px-6 py-4 text-gray-300 font-mono">
-                                {format(new Date(alert.created_at), 'HH:mm:ss')}
-                            </td>
-                            <td className="px-6 py-4">
-                                <span className={`px-2 py-1 inline-flex text-xs leading-5 font-bold rounded-md border border-opacity-20
-                  ${alert.severity === 'High' ? 'bg-red-500/10 text-red-500 border-red-500' :
-                                        alert.severity === 'Medium' ? 'bg-amber-500/10 text-amber-500 border-amber-500' :
-                                            'bg-emerald-500/10 text-emerald-500 border-emerald-500'}`}>
-                                    {alert.severity}
-                                </span>
-                            </td>
-                            <td className="px-6 py-4 text-white font-medium">{alert.alert_type}</td>
-                            <td className="px-6 py-4 font-mono text-gray-400">{alert.source_ip}</td>
-                            <td className="px-6 py-4 font-mono text-gray-400">{alert.destination_ip}</td>
-                            <td className="px-6 py-4 text-gray-300">
-                                <span className="px-2 py-1 bg-white/5 rounded text-xs font-mono">{alert.protocol}</span>
-                            </td>
-                            <td className="px-6 py-4 text-gray-400 max-w-xs truncate" title={alert.description}>
-                                {alert.description}
-                            </td>
-                        </tr>
-                    ))}
+                    {alerts.map((alert, index) => {
+                        const sevMap = { 1: 'High', 2: 'Medium', 3: 'Low' };
+                        const severity = sevMap[alert.alert?.severity] || 'Low';
+                        // EVE fields
+                        const time = alert.timestamp;
+                        const type = alert.alert?.category || 'Unknown';
+                        const src = alert.src_ip;
+                        const dst = alert.dest_ip;
+                        const proto = alert.proto;
+                        const desc = alert.alert?.signature || '';
+
+                        return (
+                            <tr key={alert._original_id || index} className="hover:bg-white/5 transition-colors">
+                                <td className="px-6 py-4 text-gray-300 font-mono">
+                                    {time ? format(new Date(time), 'HH:mm:ss') : '-'}
+                                </td>
+                                <td className="px-6 py-4">
+                                    <span className={`px-2 py-1 inline-flex text-xs leading-5 font-bold rounded-md border border-opacity-20
+                      ${severity === 'High' ? 'bg-red-500/10 text-red-500 border-red-500' :
+                                            severity === 'Medium' ? 'bg-amber-500/10 text-amber-500 border-amber-500' :
+                                                'bg-emerald-500/10 text-emerald-500 border-emerald-500'}`}>
+                                        {severity}
+                                    </span>
+                                </td>
+                                <td className="px-6 py-4 text-white font-medium">{type}</td>
+                                <td className="px-6 py-4 font-mono text-gray-400">{src}</td>
+                                <td className="px-6 py-4 font-mono text-gray-400">{dst}</td>
+                                <td className="px-6 py-4 text-gray-300">
+                                    <span className="px-2 py-1 bg-white/5 rounded text-xs font-mono">{proto}</span>
+                                </td>
+                                <td className="px-6 py-4 text-gray-400 max-w-xs truncate" title={desc}>
+                                    {desc}
+                                </td>
+                            </tr>
+                        );
+                    })}
+
                     {alerts.length === 0 && (
                         <tr>
                             <td colSpan="7" className="px-6 py-12 text-center text-gray-500">

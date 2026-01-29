@@ -1,0 +1,112 @@
+%YAML 1.1
+---
+
+# Suricata-style Configuration
+
+# Network Configuration
+vars:
+  address-groups:
+    HOME_NET: "[192.168.0.0/16, 10.0.0.0/8, 172.16.0.0/12]"
+    EXTERNAL_NET: "!$HOME_NET"
+    HTTP_SERVERS: "$HOME_NET"
+    SQL_SERVERS: "$HOME_NET"
+    DNS_SERVERS: "$HOME_NET"
+
+  port-groups:
+    HTTP_PORTS: "80"
+    SHELLCODE_PORTS: "!80"
+    ORACLE_PORTS: 1521
+    SSH_PORTS: 22
+
+# IDS / IPS Mode
+# - ids: passive monitoring (default)
+# - ips: inline prevention (future)
+mode: ids
+
+# Interface settings
+af-packet:
+  - interface: default # detecting automatically if default
+    cluster-id: 99
+    cluster-type: cluster_flow
+    defrag: yes
+
+# Logging Outputs
+outputs:
+  - eve-log:
+      enabled: yes
+      filetype: regular # regular, syslog, unix_dgram, unix_stream, redis
+      filename: eve.json
+      types:
+        - alert:
+            payload: yes             # dump payload? (base64)
+            payload-buffer-size: 4kb # max size
+            payload-printable: yes   # print payload as string?
+            packet: yes             # dump packet? (base64)
+            http: yes              # log http info
+            tls: yes               # log tls info
+            ssh: yes               # log ssh info
+            smtp: yes              # log smtp info
+        - http:
+            extended: yes     # enable this for extended logging information
+        - dns:
+            query: yes     # enable logging of DNS queries
+            answer: yes    # enable logging of DNS answers
+        - tls:
+            extended: yes     # enable this for extended logging information
+        - files:
+            force-magic: no   # force magic check for file type
+        - stats:
+            totals: yes       # stats for all threads merged together
+            threads: no       # per thread stats
+            interval: 10      # stats interval
+
+# Application Layer Parsers
+app-layer:
+  protocols:
+    http:
+      enabled: yes
+      libhtp:
+         default-config:
+           personality: IDS
+    tls:
+      enabled: yes
+      detection-ports:
+        dp: 443
+    dns:
+      global-memcap: 16mb
+
+# Rule Engine
+default-rule-path: ./rules
+rule-files:
+  - local.rules
+  # - http-events.rules
+  # - smtp-events.rules
+
+classification-file: ./classification.config
+reference-config-file: ./reference.config
+threshold-file: ./threshold.config
+
+# Tuning
+detect:
+  profile: medium
+  custom-values:
+    tny-c: 100
+    tny-c-kv: 200
+
+# Advanced
+flow:
+  memcap: 64mb
+  hash-size: 65536
+  prealloc: 10000
+  emergency-recovery: 30
+
+stream:
+  memcap: 64mb
+  checksum-validation: yes
+  inline: auto
+  reassembly:
+    memcap: 256mb
+    depth: 1mb
+    toserver-chunk-size: 2560
+    toclient-chunk-size: 2560
+    randomize-chunk-size: yes

@@ -7,6 +7,22 @@ import time
 from collections import defaultdict
 import threading
 import sys
+from scapy.all import Raw
+
+try:
+    from utils.rule_parser import RuleParser
+    from utils.config_loader import config_loader
+    from modules.flow.flow_manager import flow_manager
+    from modules.detection.threshold_manager import threshold_manager
+    from modules.parsers.http_parser import http_parser
+    from modules.parsers.dns_parser import dns_parser
+except ImportError:
+    from backend.utils.rule_parser import RuleParser
+    from backend.utils.config_loader import config_loader
+    from backend.modules.flow.flow_manager import flow_manager
+    from backend.modules.detection.threshold_manager import threshold_manager
+    from backend.modules.parsers.http_parser import http_parser
+    from backend.modules.parsers.dns_parser import dns_parser
 
 # Load environment variables
 # Load environment variables
@@ -100,6 +116,111 @@ packet_rate_tracker = defaultdict(int)
 SCAN_THRESHOLD = 20 # Number of SYN packets to trigger scan alert
 RATE_LIMIT_THRESHOLD = 100 # Packets per second to trigger Rate alert
 
+# Initialize Rule Engine & Config
+rule_parser = RuleParser()
+RULES_DIR = config_loader.get("default-rule-path", "./rules")
+RULE_FILES = config_loader.get("rule-files", ["local.rules"])
+
+LOADED_RULES = []
+base_dir = os.path.dirname(os.path.abspath(__file__))
+for rf in RULE_FILES:
+    r_path = os.path.join(base_dir, RULES_DIR, rf)
+    if os.path.exists(r_path):
+        LOADED_RULES.extend(rule_parser.parse_file(r_path))
+    else:
+        logging.warning(f"Rule file not found: {r_path}")
+
+def check_rule_match(packet, rule):
+    """Checks if a packet matches a given rule."""
+    # 1. Check Protocol
+    proto_map = {TCP: "tcp", UDP: "udp", ICMP: "icmp"}
+    p_layer = None
+    packet_proto = "ip"
+    
+    if TCP in packet:
+        p_layer = packet[TCP]
+        packet_proto = "tcp"
+    elif UDP in packet:
+        p_layer = packet[UDP]
+        packet_proto = "udp"
+    elif ICMP in packet:
+        packet_proto = "icmp"
+        
+    if rule['protocol'] != 'any' and rule['protocol'].lower() != packet_proto:
+        return False
+
+    # 2. Check IPs (Simplified 'any' support)
+    if IP in packet:
+        src_ip = packet[IP].src
+        dst_ip = packet[IP].dst
+        
+        if rule['src_ip'] != 'any' and rule['src_ip'] != src_ip:
+            return False
+        if rule['dest_ip'] != 'any' and rule['dest_ip'] != dst_ip:
+            return False
+
+    # 3. Check Ports (TCP/UDP only)
+    if p_layer:
+        src_port = str(p_layer.sport)
+        dst_port = str(p_layer.dport)
+        
+        if rule['src_port'] != 'any' and rule['src_port'] != src_port:
+            return False
+        if rule['dest_port'] != 'any' and rule['dest_port'] != dst_port:
+            return False
+
+    # 4. Check Flow State
+    if 'flow' in rule['options']:
+        # Format: flow:established,to_server
+        flow_opts = rule['options']['flow'].split(',')
+        
+        # Get current flow state for this packet
+        # Note: Scapy packet might not carry flow state directly, needs lookup
+        # In a real engine, flow is passed in. Here we rely on flow_manager cache
+        # accessed via global or lookup. 
+        # Since process_packet calls update_flow first, we can get state.
+        
+        flow_id = flow_manager.get_flow_id(packet)
+        flow_state = flow_manager.flows.get(flow_id, {})
+        current_state = flow_state.get('state', 'new')
+        
+        if 'established' in flow_opts and current_state != 'established':
+            return False
+        # (Add more flow checks like to_server/to_client here)
+
+    # 5. Check Content (Payload)
+    if 'content' in rule['options']:
+        content_sig = rule['options']['content']
+        if Raw in packet:
+            payload = str(packet[Raw].load)
+            if content_sig not in payload:
+                return False
+        else:
+            # If content required but no payload, fail (unless reversed)
+            return False
+
+    # 6. Check HTTP Options
+    # e.g. http.method, http.uri
+    if 'http.method' in rule['options']:
+        # This requires the packet to have been parsed as HTTP
+        # In this simple implementation, check_rule_match needs the parsed metadata.
+        # We'll attach it to the packet object dynamically for now or pass it in.
+        # Hack: access attached metadata
+        http_meta = getattr(packet, 'http_meta', None)
+        if not http_meta:
+            return False
+        if rule['options']['http.method'] != http_meta['method']:
+            return False
+            
+    if 'http.uri' in rule['options']:
+        http_meta = getattr(packet, 'http_meta', None)
+        if not http_meta:
+            return False
+        if rule['options']['http.uri'] not in http_meta['uri']:
+             return False
+
+    return True
+
 def log_alert(source_ip, dest_ip, protocol, alert_type, severity, description):
     """Inserts an alert into Supabase."""
     try:
@@ -125,6 +246,20 @@ def process_packet(packet):
         
         # Update Stats
         stats.update(packet)
+        
+        # Update Flow State
+        flow_manager.update_flow(packet)
+        
+        # App Layer Parsings
+        http_meta = http_parser.parse(packet)
+        if http_meta:
+            packet.http_meta = http_meta # Attach for rule engine
+            logging.info(f"HTTP DETECTED: {http_meta['method']} {http_meta['uri']}")
+
+        dns_meta = dns_parser.parse(packet)
+        if dns_meta:
+            packet.dns_meta = dns_meta
+            logging.info(f"DNS DETECTED: {dns_meta['type']} {dns_meta['qname']}")
 
         # 1. Port Scan Detection (SYN Scan)
         if TCP in packet and packet[TCP].flags == 'S':
@@ -138,6 +273,32 @@ def process_packet(packet):
         if packet_rate_tracker[src_ip] > RATE_LIMIT_THRESHOLD:
              log_alert(src_ip, dst_ip, "IP", "High Traffic Volume", "Medium", f"High packet rate detected from {src_ip}")
              packet_rate_tracker[src_ip] = 0
+
+        # 3. Rule Engine Check
+        for rule in LOADED_RULES:
+            if check_rule_match(packet, rule):
+                # Check Threshold before alerting
+                if not threshold_manager.check_threshold(rule, src_ip, dst_ip):
+                    continue
+
+                # Construct description
+                msg = rule['options'].get('msg', 'Suspicious Activity Detected')
+                
+                # Check for classification
+                classtype = rule['options'].get('classtype')
+                priority_int = 3 # Default Low
+                
+                if classtype:
+                    priority_int, class_desc = config_loader.get_classification(classtype)
+                
+                # Map priority int to severity string for DB (legacy support)
+                sev_map = {1: "High", 2: "Medium", 3: "Low", 4: "Low"}
+                severity = sev_map.get(priority_int, "Low")
+                
+                # Deduplicate based on recent logs? For now, just log.
+                # In prod, we'd throttle specific SIDs.
+                log_alert(src_ip, dst_ip, rule['protocol'].upper(), msg, severity, f"Rule Match: {msg} (SID: {rule['options'].get('sid')})")
+                break # Stop after first match per packet to prevent flood
 
 def report_stats():
     """Periodically pushes stats to Supabase."""
@@ -260,32 +421,20 @@ def main():
     try:
         # Resolve just the name for Scapy if it's a dict
         scapy_iface = iface['name'] if isinstance(iface, dict) and 'name' in iface else iface
+        print(f"Starting Scapy Sniffer on {scapy_iface}...")
         
         # Determine strictness of sniffing
         # store=0 helps memory. prn=process_packet is the callback.
         sniff(iface=scapy_iface, prn=process_packet, store=0)
-    except Exception as e:
-        print(f"Error sniffing: {e}")
-        print("Note: On Windows, make sure Npcap is installed. On Linux, run as root.")
-        if "name" in str(e):
-             print("debug: iface object was:", iface)
-
-    # Start Stats Thread
-    stats_thread = threading.Thread(target=report_stats, daemon=True)
-    stats_thread.start()
-
-    # Start Sniffer
-    try:
-        print("Starting Scapy Sniffer (Default Interface)...")
-        # storing=0 is essential for long-running sniff
-        sniff(prn=process_packet, store=0)
     except KeyboardInterrupt:
         print("Stopping IDS Monitor...")
         log_system_event("System Stop", "IDS Monitor stopped manually")
     except Exception as e:
         log_system_event("System Error", f"IDS Monitor crashed: {e}")
-        print(f"Error: {e}")
+        print(f"Error sniffing: {e}")
         print("Note: On Windows, make sure Npcap is installed. On Linux, run as root.")
+        if "name" in str(e):
+             print("debug: iface object was:", iface)
 
 
 if __name__ == "__main__":
