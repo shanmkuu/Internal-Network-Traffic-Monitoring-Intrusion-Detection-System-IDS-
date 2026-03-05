@@ -8,3 +8,4 @@ python-nmap
 pysnmp-lextudio
 zeroconf
 mac-vendor-lookup
+httpx

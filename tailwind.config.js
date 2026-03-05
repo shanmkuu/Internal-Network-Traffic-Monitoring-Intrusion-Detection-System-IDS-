@@ -52,6 +52,17 @@ export default {
           DEFAULT: 'var(--color-error)',
           foreground: 'var(--color-error-foreground)',
         },
+        // Enterprise named tokens
+        slate: {
+          925: '#0B0F1A',
+          850: '#111827',
+          800: '#1A2236',
+          750: '#243047',
+        },
+        indigo: {
+          500: '#6366F1',
+          600: '#4F46E5',
+        },
       },
       borderRadius: {
         sm: 'var(--radius-sm)',
@@ -60,10 +71,13 @@ export default {
         xl: 'var(--radius-xl)',
       },
       fontFamily: {
-        sans: ['"Source Sans 3"', 'sans-serif'],
-        mono: ['"JetBrains Mono"', 'monospace'],
-        caption: ['"IBM Plex Sans"', 'sans-serif'],
-        data: ['"Fira Code"', 'monospace'],
+        sans: ['"Space Grotesk"', 'system-ui', 'sans-serif'],
+        mono: ['"Space Mono"', 'monospace'],
+        caption: ['"Space Grotesk"', 'sans-serif'],
+        data: ['"Space Mono"', 'monospace'],
+      },
+      backdropBlur: {
+        xs: '4px',
       },
     },
   },

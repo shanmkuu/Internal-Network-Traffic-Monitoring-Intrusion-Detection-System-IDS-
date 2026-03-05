@@ -1,4 +1,5 @@
 import os
+import asyncio
 import logging
 from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
 from dotenv import load_dotenv
@@ -43,6 +44,17 @@ except Exception as e:
     supabase = None
 
 app = FastAPI(title="IDS Backend API")
+
+# ── Wazuh Middleware ──────────────────────────────────────────────────
+try:
+    from backend.modules.wazuh.router import wazuh_router, set_orchestrator
+    from backend.modules.wazuh.orchestrator import WazuhOrchestrator
+except ImportError:
+    from modules.wazuh.router import wazuh_router, set_orchestrator
+    from modules.wazuh.orchestrator import WazuhOrchestrator
+
+app.include_router(wazuh_router)
+logging.info("Wazuh middleware router registered at /api/wazuh")
 
 # CORS Configuration
 origins = [
@@ -254,10 +266,19 @@ def device_scanner_loop():
         time.sleep(300) 
 
 @app.on_event("startup")
-def startup_event():
-    # Start scanning thread
+async def startup_event():
+    # ── Device scanner (existing background thread) ─────────────────
     display_thread = threading.Thread(target=device_scanner_loop, daemon=True)
     display_thread.start()
+
+    # ── Wazuh Orchestrator (asyncio push-based automation) ───────────
+    try:
+        orchestrator = WazuhOrchestrator(supabase_client=supabase)
+        set_orchestrator(orchestrator)
+        asyncio.create_task(orchestrator.run())
+        logging.info("WazuhOrchestrator started as asyncio background task.")
+    except Exception as exc:
+        logging.warning("WazuhOrchestrator failed to start: %s", exc)
 
 @app.get("/api/devices")
 def get_devices():

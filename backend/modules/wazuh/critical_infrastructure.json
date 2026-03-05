@@ -1,0 +1,7 @@
+{
+    "_comment": "IPs here are protected assets. Active-response will refuse to block them.",
+    "protected_ips": [
+        "127.0.0.1",
+        "::1"
+    ]
+}

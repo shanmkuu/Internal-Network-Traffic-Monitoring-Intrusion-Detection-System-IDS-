@@ -4,23 +4,24 @@ const TabsContext = createContext({});
 
 export const Tabs = ({ defaultValue, className, children }) => {
     const [activeTab, setActiveTab] = useState(defaultValue);
-
     return (
         <TabsContext.Provider value={{ activeTab, setActiveTab }}>
-            <div className={`w-full ${className || ''}`}>
-                {children}
-            </div>
+            <div className={`w-full ${className || ''}`}>{children}</div>
         </TabsContext.Provider>
     );
 };
 
-export const TabsList = ({ className, children }) => {
-    return (
-        <div className={`inline-flex h-10 items-center justify-center rounded-lg bg-[#1A2332] p-1 text-gray-500 border border-white/5 ${className || ''}`}>
-            {children}
-        </div>
-    );
-};
+export const TabsList = ({ className, children }) => (
+    <div
+        className={`inline-flex items-center gap-1 p-1 rounded-lg ${className || ''}`}
+        style={{
+            background: 'var(--bg-panel)',
+            border: '1px solid var(--border-subtle)',
+        }}
+    >
+        {children}
+    </div>
+);
 
 export const TabsTrigger = ({ value, className, children }) => {
     const { activeTab, setActiveTab } = useContext(TabsContext);
@@ -29,14 +30,14 @@ export const TabsTrigger = ({ value, className, children }) => {
     return (
         <button
             onClick={() => setActiveTab(value)}
-            className={`
-                inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50
-                ${isActive
-                    ? 'bg-[#2D3B4E] text-white shadow-sm'
-                    : 'hover:bg-white/5 hover:text-gray-300'
-                }
-                ${className || ''}
-            `}
+            className={`relative px-4 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 ${className || ''}`}
+            style={{
+                color: isActive ? 'var(--neon-primary)' : 'var(--text-dim)',
+                background: isActive ? 'rgba(124,58,237,0.15)' : 'transparent',
+                border: isActive ? '1px solid rgba(124,58,237,0.25)' : '1px solid transparent',
+                boxShadow: isActive ? '0 0 12px rgba(124,58,237,0.15)' : 'none',
+                letterSpacing: '0.03em',
+            }}
         >
             {children}
         </button>
@@ -45,11 +46,12 @@ export const TabsTrigger = ({ value, className, children }) => {
 
 export const TabsContent = ({ value, className, children }) => {
     const { activeTab } = useContext(TabsContext);
-
     if (activeTab !== value) return null;
-
     return (
-        <div className={`mt-2 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 animated-fade-in ${className || ''}`}>
+        <div
+            className={`mt-4 animate-float-up ${className || ''}`}
+            style={{ animationDuration: '0.3s' }}
+        >
             {children}
         </div>
     );

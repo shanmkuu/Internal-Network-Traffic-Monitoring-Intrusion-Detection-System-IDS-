@@ -8,10 +8,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/Ta
 
 const NetworkAnalyticsHub = () => {
     return (
-        <div className="max-w-7xl mx-auto space-y-8">
+        <div className="max-w-7xl mx-auto space-y-6">
             <div>
-                <h1 className="text-3xl font-mono font-bold text-white mb-2">Network Analytics Hub</h1>
-                <p className="text-gray-400">Real-time network traffic analysis and statistics.</p>
+                <h1 className="text-lg font-semibold" style={{ color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>Network Analytics Hub</h1>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--color-foreground-muted)' }}>Real-time network traffic analysis and device statistics</p>
             </div>
 
             <Tabs defaultValue="overview" className="w-full">

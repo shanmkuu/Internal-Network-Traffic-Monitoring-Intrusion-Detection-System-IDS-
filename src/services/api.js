@@ -9,6 +9,33 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 const API_URL = 'http://localhost:8000/api'
 
 export const api = {
+    getWazuhAlerts: async (timeRange = '1h') => {
+        try {
+            const response = await fetch(`${API_URL}/wazuh/alerts?time_range=${timeRange}`);
+            if (!response.ok) throw new Error('Wazuh unreachable');
+            return await response.json();
+        } catch (error) {
+            console.error('Error fetching Wazuh alerts:', error);
+            // Return empty structure matching backend schema
+            return { summary: {}, alerts: [], incidents: [] };
+        }
+    },
+
+    blockIpOnWazuh: async (ip, agentId = '001') => {
+        try {
+            const response = await fetch(`${API_URL}/wazuh/active-response`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ip, agent_id: agentId })
+            });
+            if (!response.ok) throw new Error('Failed to block IP');
+            return await response.json();
+        } catch (error) {
+            console.error('Error blocking IP:', error);
+            return { error: error.message };
+        }
+    },
+
     getAlerts: async () => {
         try {
             const response = await fetch(`${API_URL}/alerts`)

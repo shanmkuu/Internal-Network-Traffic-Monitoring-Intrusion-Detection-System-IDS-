@@ -54,7 +54,7 @@ A comprehensive cybersecurity dashboard for real-time network monitoring, traffi
     ```powershell
     python -m venv venv
     ```
-3.  Activate the environment:
+3.  Activate the environ.\venv\Scriptsment:
     ```powershell
     .\venv\Scripts\Activate
     ```
